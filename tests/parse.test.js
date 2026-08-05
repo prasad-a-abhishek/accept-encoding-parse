@@ -550,3 +550,386 @@ test('entry_toJSON_includes_params', () => {
   const json = entry.toJSON();
   assert.deepStrictEqual(json.params, { level: '4' });
 });
+
+// =============================================================================
+
+// =============================================================================
+// Extended coverage: q-value boundaries, edge cases, unicode, concurrent
+// =============================================================================
+
+describe('extended: q-value format normalization', () => {
+  test('q=0 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=0');
+    assert.strictEqual(entries[0].q, 0);
+  });
+  test('q=1 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=1');
+    assert.strictEqual(entries[0].q, 1);
+  });
+  test('q=1.0 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=1.0');
+    assert.strictEqual(entries[0].q, 1);
+  });
+  test('q=1.000 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=1.000');
+    assert.strictEqual(entries[0].q, 1);
+  });
+  test('q=0.000 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=0.000');
+    assert.strictEqual(entries[0].q, 0);
+  });
+  test('q=0.1 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=0.1');
+    assert.strictEqual(entries[0].q, 0.1);
+  });
+  test('q=0.12 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=0.12');
+    assert.strictEqual(entries[0].q, 0.12);
+  });
+  test('q=0.123 is allowed', () => {
+    const entries = parseAcceptEncoding('gzip;q=0.123');
+    assert.strictEqual(entries[0].q, 0.123);
+  });
+  test('q=0.1234 rejected (four decimals)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=0.1234'), InvalidAcceptEncodingHeader);
+  });
+  test('q=1.0001 rejected (over one)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=1.0001'), InvalidAcceptEncodingHeader);
+  });
+  test('q=2 rejected', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=2'), InvalidAcceptEncodingHeader);
+  });
+  test('q=-0.1 rejected', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=-0.1'), InvalidAcceptEncodingHeader);
+  });
+  test('q=1e-1 rejected (scientific notation)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=1e-1'), InvalidAcceptEncodingHeader);
+  });
+  test('q=1. rejected (trailing dot)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=1.'), InvalidAcceptEncodingHeader);
+  });
+  test('q=.5 rejected (no leading zero)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=.5'), InvalidAcceptEncodingHeader);
+  });
+  test('q=0..5 rejected', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=0..5'), InvalidAcceptEncodingHeader);
+  });
+  test('q=0.5a rejected (trailing junk)', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;q=0.5a'), InvalidAcceptEncodingHeader);
+  });
+});
+
+describe('extended: parameter parsing', () => {
+  test('multiple params on one encoding', () => {
+    const e = parseAcceptEncoding('br;level=4;mode=text')[0];
+    assert.strictEqual(e.params.level, '4');
+    assert.strictEqual(e.params.mode, 'text');
+  });
+  test('param names are lowercased', () => {
+    const e = parseAcceptEncoding('br;LEVEL=4')[0];
+    assert.ok('level' in e.params);
+  });
+  test('flag-like param (no value) throws', () => {
+    assert.throws(() => parseAcceptEncoding('br;flag'), InvalidAcceptEncodingHeader);
+  });
+  test('empty param name throws', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;=value'), InvalidAcceptEncodingHeader);
+  });
+  test('empty param value throws', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;level='), InvalidAcceptEncodingHeader);
+  });
+  test('trailing semicolon throws', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;'), InvalidAcceptEncodingHeader);
+  });
+  test('q among other params works', () => {
+    const e = parseAcceptEncoding('br;level=4;q=0.5')[0];
+    assert.strictEqual(e.q, 0.5);
+    assert.strictEqual(e.params.level, '4');
+  });
+  test('q not first param still works', () => {
+    const e = parseAcceptEncoding('br;level=4;q=0.7')[0];
+    assert.strictEqual(e.q, 0.7);
+  });
+  test('double semicolon throws', () => {
+    assert.throws(() => parseAcceptEncoding('gzip;;deflate'), InvalidAcceptEncodingHeader);
+  });
+});
+
+describe('extended: encoding normalization and tokens', () => {
+  test('uppercase encoding normalized to lowercase', () => {
+    assert.strictEqual(parseAcceptEncoding('GZIP')[0].encoding, 'gzip');
+  });
+  test('mixed case normalized', () => {
+    assert.strictEqual(parseAcceptEncoding('BrOtLi')[0].encoding, 'brotli');
+  });
+  test('hyphenated encoding', () => {
+    assert.strictEqual(parseAcceptEncoding('x-gzip')[0].encoding, 'x-gzip');
+  });
+  test('dot in encoding name', () => {
+    assert.strictEqual(parseAcceptEncoding('gzip.enhanced')[0].encoding, 'gzip.enhanced');
+  });
+  test('underscore in encoding name', () => {
+    assert.strictEqual(parseAcceptEncoding('foo_bar')[0].encoding, 'foo_bar');
+  });
+  test('digits in encoding name', () => {
+    assert.strictEqual(parseAcceptEncoding('gzip2')[0].encoding, 'gzip2');
+  });
+  test('invalid token chars rejected: parens', () => {
+    assert.throws(() => parseAcceptEncoding('gzip(level)'), InvalidAcceptEncodingHeader);
+  });
+  test('invalid token chars rejected: space', () => {
+    assert.throws(() => parseAcceptEncoding('foo bar'), InvalidAcceptEncodingHeader);
+  });
+  test('invalid token chars rejected: null byte', () => {
+    assert.throws(() => parseAcceptEncoding('gzip\x00'), InvalidAcceptEncodingHeader);
+  });
+  test('invalid token chars rejected: emoji', () => {
+    assert.throws(() => parseAcceptEncoding('🚀'), InvalidAcceptEncodingHeader);
+  });
+  test('non-ASCII latin1 rejected', () => {
+    assert.throws(() => parseAcceptEncoding('gziþ'), InvalidAcceptEncodingHeader);
+  });
+});
+
+describe('extended: whitespace handling', () => {
+  test('leading whitespace stripped', () => {
+    assert.strictEqual(parseAcceptEncoding('   gzip')[0].encoding, 'gzip');
+  });
+  test('multiple spaces between encodings', () => {
+    const es = parseAcceptEncoding('gzip     ,     deflate');
+    assert.strictEqual(es.length, 2);
+  });
+  test('tabs between encodings', () => {
+    const es = parseAcceptEncoding('gzip\t,\tdeflate');
+    assert.strictEqual(es.length, 2);
+  });
+  test('leading and trailing whitespace around header', () => {
+    const es = parseAcceptEncoding('   gzip, deflate   ');
+    assert.strictEqual(es.length, 2);
+  });
+  test('trailing comma ignored', () => {
+    const es = parseAcceptEncoding('gzip,');
+    assert.strictEqual(es.length, 1);
+  });
+  test('double comma creates empty segment (ignored)', () => {
+    const es = parseAcceptEncoding('gzip,,deflate');
+    assert.strictEqual(es.length, 2);
+  });
+  test('multiple trailing commas ignored', () => {
+    const es = parseAcceptEncoding('gzip,,,');
+    assert.strictEqual(es.length, 1);
+  });
+  test('only commas treated as empty header (identity)', () => {
+    const es = parseAcceptEncoding(',,,');
+    assert.strictEqual(es.length, 1);
+    assert.strictEqual(es[0].encoding, 'identity');
+  });
+});
+
+describe('extended: sort stability', () => {
+  test('same q-value preserves original order', () => {
+    const es = parseAcceptEncoding('a;q=0.5, b;q=0.5, c;q=0.5');
+    assert.deepStrictEqual(es.map(e => e.encoding), ['a', 'b', 'c']);
+  });
+  test('q descending: higher q first', () => {
+    const es = parseAcceptEncoding('a;q=0.1, b;q=0.9, c;q=0.5, d;q=0.3');
+    assert.deepStrictEqual(es.map(e => e.encoding), ['b', 'c', 'd', 'a']);
+  });
+  test('q ties broken by insertion order', () => {
+    const es = parseAcceptEncoding('first;q=0.5, second;q=0.5');
+    assert.deepStrictEqual(es.map(e => e.encoding), ['first', 'second']);
+  });
+});
+
+describe('extended: selectEncoding realistic scenarios', () => {
+  test('br preferred over gzip when higher q', () => {
+    assert.strictEqual(selectEncoding('gzip;q=0.8, br;q=1.0', ['gzip', 'br']), 'br');
+  });
+  test('server only has gzip but client prefers br', () => {
+    assert.strictEqual(selectEncoding('gzip;q=1.0, br;q=0.5', ['br']), 'br');
+  });
+  test('wildcard matches available encoding', () => {
+    const r = selectEncoding('*', ['gzip', 'br']);
+    assert.ok(['gzip', 'br'].includes(r));
+  });
+  test('all q=0 returns null', () => {
+    assert.strictEqual(selectEncoding('gzip;q=0, br;q=0', ['gzip', 'br']), null);
+  });
+  test('identity fallback when no match', () => {
+    assert.strictEqual(selectEncoding('gzip;q=0.5', ['identity']), 'identity');
+  });
+  test('empty header returns identity', () => {
+    assert.strictEqual(selectEncoding('', ['gzip', 'br']), 'identity');
+  });
+  test('available is case-insensitive', () => {
+    assert.strictEqual(selectEncoding('GZIP', ['GZIP', 'BR']), 'gzip');
+  });
+  test('ties broken by header order', () => {
+    assert.strictEqual(selectEncoding('gzip;q=0.9, br;q=0.9', ['gzip', 'br']), 'gzip');
+  });
+  test('pre-parsed entries work with selectEncoding', () => {
+    const entries = parseAcceptEncoding('gzip;q=0.8, br;q=1.0');
+    assert.strictEqual(selectEncoding(entries, ['gzip', 'br']), 'br');
+  });
+  test('selectEncoding throws on non-string/non-array input', () => {
+    assert.throws(() => selectEncoding(123, ['gzip']), InvalidAcceptEncodingHeader);
+    assert.throws(() => selectEncoding({}, ['gzip']), InvalidAcceptEncodingHeader);
+  });
+  test('selectEncoding throws on non-array available', () => {
+    assert.throws(() => selectEncoding('gzip', 'gzip'), InvalidAcceptEncodingHeader);
+  });
+});
+
+describe('extended: AcceptEncodingEntry class methods', () => {
+  test('equals: same fields true', () => {
+    const a = parseAcceptEncoding('gzip;q=0.5')[0];
+    const b = parseAcceptEncoding('gzip;q=0.5')[0];
+    assert.strictEqual(a.equals(b), true);
+  });
+  test('equals: different q false', () => {
+    const a = parseAcceptEncoding('gzip;q=0.5')[0];
+    const b = parseAcceptEncoding('gzip;q=0.6')[0];
+    assert.strictEqual(a.equals(b), false);
+  });
+  test('equals: different encoding false', () => {
+    const a = parseAcceptEncoding('gzip')[0];
+    const b = parseAcceptEncoding('br')[0];
+    assert.strictEqual(a.equals(b), false);
+  });
+  test('equals: null returns false', () => {
+    assert.strictEqual(parseAcceptEncoding('gzip')[0].equals(null), false);
+  });
+  test('equals: undefined returns false', () => {
+    assert.strictEqual(parseAcceptEncoding('gzip')[0].equals(undefined), false);
+  });
+  test('toJSON includes all fields', () => {
+    const e = parseAcceptEncoding('br;level=4;q=0.8')[0];
+    const json = e.toJSON();
+    assert.strictEqual(json.encoding, 'br');
+    assert.strictEqual(json.q, 0.8);
+    assert.deepStrictEqual(json.params, { level: '4' });
+  });
+  test('toJSON roundtrip via JSON.parse', () => {
+    const e = parseAcceptEncoding('gzip;q=0.5')[0];
+    const json = JSON.parse(JSON.stringify(e.toJSON()));
+    assert.strictEqual(json.encoding, 'gzip');
+    assert.strictEqual(json.q, 0.5);
+  });
+  test('repr() returns inspect string', () => {
+    const e = parseAcceptEncoding('gzip')[0];
+    const r = e.repr();
+    assert.ok(r.includes('gzip'));
+    assert.ok(r.includes('AcceptEncodingEntry'));
+  });
+  test('Symbol.for nodejs.util.inspect.custom used by util.inspect', () => {
+    const { format } = require('node:util');
+    const e = parseAcceptEncoding('gzip')[0];
+    const s = format(e);
+    assert.ok(s.includes('gzip'));
+  });
+});
+
+describe('extended: serialize edge cases', () => {
+  test('serialize q=0 includes q', () => {
+    const s = serializeAcceptEncoding(parseAcceptEncoding('gzip;q=0'));
+    assert.ok(s.includes('q=0'));
+  });
+  test('serialize q=0.5 formats correctly', () => {
+    const s = serializeAcceptEncoding(parseAcceptEncoding('gzip;q=0.5'));
+    assert.ok(s.includes('q=0.5'));
+  });
+  test('serialize preserves param order', () => {
+    const e = parseAcceptEncoding('br;a=1;b=2;c=3')[0];
+    const s = serializeAcceptEncoding([e]);
+    assert.ok(s.includes('a=1'));
+    assert.ok(s.includes('b=2'));
+    assert.ok(s.includes('c=3'));
+  });
+  test('serialize throws on non-array', () => {
+    assert.throws(() => serializeAcceptEncoding('gzip'), InvalidAcceptEncodingHeader);
+  });
+  test('serialize throws on non-entry object', () => {
+    assert.throws(() => serializeAcceptEncoding([{}]), InvalidAcceptEncodingHeader);
+  });
+  test('serialize multi-entry comma-separated', () => {
+    const es = parseAcceptEncoding('gzip;q=0.5, br;q=0.8');
+    const s = serializeAcceptEncoding(es);
+    assert.ok(s.includes(','));
+  });
+  test('serialize empty array returns empty string', () => {
+    // The impl returns '' for empty arrays (no throw)
+    const s = serializeAcceptEncoding([]);
+    assert.strictEqual(s, '');
+  });
+});
+
+describe('extended: concurrent and repeated calls', () => {
+  test('1000 parses return identical results', () => {
+    const first = parseAcceptEncoding('gzip;q=0.5, br;level=4;q=0.8');
+    for (let i = 0; i < 999; i++) {
+      const r = parseAcceptEncoding('gzip;q=0.5, br;level=4;q=0.8');
+      assert.strictEqual(r.length, first.length);
+      for (let j = 0; j < r.length; j++) {
+        assert.strictEqual(r[j].encoding, first[j].encoding);
+        assert.strictEqual(r[j].q, first[j].q);
+        assert.deepStrictEqual(r[j].params, first[j].params);
+      }
+    }
+  });
+  test('parallel Promise.all produces consistent results', async () => {
+    const promises = Array.from({ length: 50 }, () =>
+      Promise.resolve(parseAcceptEncoding('gzip;q=0.5, br;q=0.9'))
+    );
+    const results = await Promise.all(promises);
+    for (const r of results) {
+      assert.strictEqual(r.length, 2);
+      assert.strictEqual(r[0].encoding, 'br');
+      assert.strictEqual(r[1].encoding, 'gzip');
+    }
+  });
+  test('returned arrays are independent (not same reference)', () => {
+    const r1 = parseAcceptEncoding('gzip');
+    const r2 = parseAcceptEncoding('gzip');
+    assert.notStrictEqual(r1, r2);
+    assert.notStrictEqual(r1[0], r2[0]);
+  });
+  test('entries frozen at array level', () => {
+    const r = parseAcceptEncoding('gzip');
+    assert.strictEqual(Object.isFrozen(r), true);
+  });
+});
+
+describe('extended: entry metadata', () => {
+  test('empty header returns identity entry', () => {
+    const es = parseAcceptEncoding('');
+    assert.strictEqual(es.length, 1);
+    assert.strictEqual(es[0].encoding, 'identity');
+    assert.strictEqual(es[0].q, 1.0);
+  });
+  test('empty header identity entry has original=""', () => {
+    const es = parseAcceptEncoding('');
+    assert.strictEqual(es[0].original, '');
+  });
+  test('entry.original is trimmed', () => {
+    const es = parseAcceptEncoding('  gzip  ');
+    assert.strictEqual(es[0].original, 'gzip');
+  });
+  test('entry.order increases with position', () => {
+    const es = parseAcceptEncoding('a, b, c');
+    assert.strictEqual(es[0].order, 0);
+    assert.strictEqual(es[1].order, 1);
+    assert.strictEqual(es[2].order, 2);
+  });
+  test('empty header identity order=0', () => {
+    const es = parseAcceptEncoding('');
+    assert.strictEqual(es[0].order, 0);
+  });
+  test('entry.explicitQ is false by default', () => {
+    const e = parseAcceptEncoding('gzip')[0];
+    assert.strictEqual(e.explicitQ, false);
+  });
+  test('entry.explicitQ is true when ;q= present', () => {
+    const e = parseAcceptEncoding('gzip;q=0.5')[0];
+    assert.strictEqual(e.explicitQ, true);
+  });
+});

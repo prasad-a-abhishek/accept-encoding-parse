@@ -295,7 +295,7 @@ function selectEncoding(headerOrEntries, available) {
   }
 
   // Build effective q for each candidate
-  const explicit = new Map(); // encoding -> { q, order }
+  const explicit = new Map(); // encoding -> { q, order }  (all entries incl. q=0)
   let hasWildcard = false;
   let wildcardQ = 0;
   let identityExplicit = null; // { q, order } if identity was explicitly listed
@@ -310,7 +310,7 @@ function selectEncoding(headerOrEntries, available) {
       identityExplicit = { q: e.q, order: e.order };
       continue;
     }
-    if (e.q === 0) continue; // explicitly rejected
+    // Store ALL explicit encodings (including q=0 = explicitly rejected)
     if (!explicit.has(e.encoding) || e.q > explicit.get(e.encoding).q) {
       explicit.set(e.encoding, { q: e.q, order: e.order });
     }
@@ -320,7 +320,7 @@ function selectEncoding(headerOrEntries, available) {
   const identityQ = identityExplicit ? identityExplicit.q : 1.0;
   const identityOrder = identityExplicit ? identityExplicit.order : Infinity;
 
-  // Pick highest-q candidate that is in available
+  // Pick highest-q candidate that is in available (respects explicit q=0 rejections)
   let best = null;
   let bestQ = -Infinity;
   let bestOrder = Infinity;
@@ -333,9 +333,11 @@ function selectEncoding(headerOrEntries, available) {
       entryQ = identityQ;
       entryOrder = identityOrder;
     } else if (explicit.has(av)) {
+      // This encoding was explicitly listed in the header (possibly with q=0)
       entryQ = explicit.get(av).q;
       entryOrder = explicit.get(av).order;
     } else if (hasWildcard) {
+      // No explicit entry; wildcard covers unknown encodings
       entryQ = wildcardQ;
       entryOrder = Infinity;
     }
