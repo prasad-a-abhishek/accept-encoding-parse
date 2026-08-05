@@ -1,0 +1,43 @@
+{
+  "name": "accept-encoding-parse",
+  "version": "0.1.0",
+  "description": "Zero-dependency parser for HTTP Accept-Encoding request headers with q-value and parameter support (RFC 9110 §12.5.3)",
+  "main": "src/index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "require": "./src/index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "files": [
+    "src/",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "gate": "bash scripts/pre-push-gate.sh"
+  },
+  "keywords": [
+    "http",
+    "accept-encoding",
+    "header",
+    "parse",
+    "q-value",
+    "rfc-9110",
+    "compression",
+    "content-negotiation"
+  ],
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
