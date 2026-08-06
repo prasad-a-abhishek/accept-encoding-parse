@@ -11,4 +11,4 @@ All notable changes to this project will be documented in this file.
 - `AcceptEncodingEntry` class — frozen entry with `encoding`, `q`, `params`, `original`, `order` fields. Implements `.equals()`, `.repr()`, `.toJSON()`, and Node.js `util.inspect` support.
 - `InvalidAcceptEncodingHeader` error class — thrown on malformed q-values (non-numeric, out of [0,1] range), invalid token characters, or empty encoding tokens.
 - Full TypeScript `index.d.ts` declarations.
-- 54 tests covering all 27 acceptance criteria plus edge/boundary cases.
+- 140 tests covering all 27 acceptance criteria plus edge/boundary cases.
