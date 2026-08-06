@@ -222,7 +222,7 @@ tests_passing: true
 
 - `tests_passing: true` (140/140, fresh-clone verified)
 - `pre_push_gate_exit: 0`
-- `commit_sha: 676879b8bbc159609d394b8bd06e16d235657e58`
+- `commit_sha: see tag v0.1.0 (annotated at ship time)`
 - `version: 0.1.0`
 - `tag: v0.1.0` (to be created at this SHA or final SHA)
 
