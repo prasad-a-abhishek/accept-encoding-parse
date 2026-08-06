@@ -52,7 +52,6 @@ export class AcceptEncodingEntry {
   /** Human-readable representation. */
   toString(): string;
 
-  /** Spec's `repr` — calls toString. */
   repr(): string;
 
   /** JSON round-trip helper. */
