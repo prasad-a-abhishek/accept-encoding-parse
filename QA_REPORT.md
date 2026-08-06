@@ -214,4 +214,16 @@ Per the contract rubric (≥1 Critical OR ≥3 High → REJECT; ≥1 High OR ≥
 | Fuzz | PASS — 30+ inputs executed, no wrong output for valid input, no crash, no security issue |
 | Findings | 0 Critical, 0 High, 0 Medium, 1 Low (CHANGELOG drift), 1 Info (q-value grammar) |
 
+---
+
+## Ship manifest (cycle_30/ship, 2026-08-06)
+
+tests_passing: true
+
+- `tests_passing: true` (140/140, fresh-clone verified)
+- `pre_push_gate_exit: 0`
+- `commit_sha: 676879b8bbc159609d394b8bd06e16d235657e58`
+- `version: 0.1.0`
+- `tag: v0.1.0` (to be created at this SHA or final SHA)
+
 VERDICT: SHIP
